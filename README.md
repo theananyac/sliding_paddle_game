@@ -1,3 +1,3 @@
 # sliding_paddle_game
-<img width="1405" height="915" alt="image" src="https://github.com/user-attachments/assets/12101df3-94dc-446c-91e1-bc687a87c0a6" />
 
+<img width="1215" height="790" alt="image" src="https://github.com/user-attachments/assets/db4f4c9e-514c-4b83-bdcd-ae9bb8b78577" />
