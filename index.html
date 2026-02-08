@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sliding Paddle</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: black;
+            flex-direction: column;
+        }
+        #pongCanvas {
+            border: 1px solid black;
+            background-color: blue;
+        }
+        #startBtn, #playAgainBtn, #pauseBtn, #resumeBtn {
+            padding: 20px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            margin: 20px;
+        }
+        #message {
+            font-size: 24px;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            display: none;
+        }
+        #levelDisplay {
+            font-size: 20px;
+            color: white;
+            text-align: center;
+            margin-top: 10px;
+        }
+        #playAgainBtn, #pauseBtn, #resumeBtn {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="pongCanvas" width="800" height="400"></canvas>
+    <div id="message"></div>
+    <div id="levelDisplay">Level: 1</div>
+    <button id="startBtn" type="button">Start Game</button>
+    <button id="playAgainBtn" type="button">Play Again</button>
+    <button id="pauseBtn" type="button">Pause Game</button>
+    <button id="resumeBtn" type="button">Resume Game</button>
+    <audio id="paddleHitAudio" src="paddlehit.mp3"></audio>
+
+    <script>
+        const canvas = document.getElementById('pongCanvas');
+        const context = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
+        const messageDiv = document.getElementById('message');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const paddleHitAudio = document.getElementById('paddleHitAudio');
+
+        let paddleWidth = 10;
+        let paddleHeight = 100;
+        let ballRadius = 10;
+        let paddle1Y = (canvas.height - paddleHeight) / 2;
+        let paddle2Y = (canvas.height - paddleHeight) / 2;
+        let ballX = canvas.width / 2;
+        let ballY = canvas.height / 2;
+        let ballSpeedX = 3;
+        let ballSpeedY = 3;
+        let paddle1Speed = 0;
+        const paddleSpeed = 6;
+        let level = 1;
+        let isGameOver = false;
+        let gameInterval;
+        let levelTimer;
+        let lastDirection = 'right';
+
+        let initialSpeed = 4;
+        let speedIncrement = 1.5;
+
+        let savedBallX, savedBallY, savedBallSpeedX, savedBallSpeedY, savedPaddle1Y, savedPaddle2Y;
+        let isPaused = false;
+
+        function drawRect(x, y, width, height, color) {
+            context.fillStyle = color;
+            context.fillRect(x, y, width, height);
+        }
+
+        function drawCircle(x, y, radius, color) {
+            context.fillStyle = color;
+            context.beginPath();
+            context.arc(x, y, radius, 0, Math.PI * 2, false);
+            context.closePath();
+            context.fill();
+        }
+
+        function drawMiddleLine() {
+            context.strokeStyle = 'white';
+            context.beginPath();
+            context.moveTo(canvas.width / 2, 0);
+            context.lineTo(canvas.width / 2, canvas.height);
+            context.stroke();
+        }
+
+        function resetBall() {
+            ballX = canvas.width / 2;
+            ballY = canvas.height / 2;
+            ballSpeedX = initialSpeed * (Math.random() > 0.5 ? 1 : -1);
+            ballSpeedY = initialSpeed * (Math.random() > 0.5 ? 1 : -1);
+        }
+
+        function moveEverything() {
+            if (isGameOver || isPaused) return;
+
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+
+            if (ballY - ballRadius < 0 || ballY + ballRadius > canvas.height) {
+                ballSpeedY = -ballSpeedY * 0.8;
+                ballY = Math.max(ballRadius, Math.min(canvas.height - ballRadius, ballY));
+                paddleHitAudio.play();
+            }
+
+            if (ballX - ballRadius < 0) {
+                gameOver('You Lost!');
+            }
+
+            if (ballX + ballRadius > canvas.width) {
+                if (ballY > paddle2Y && ballY < paddle2Y + paddleHeight) {
+                    ballSpeedX = -ballSpeedX;
+                    adjustTrajectory();
+                    paddleHitAudio.play();
+                } else {
+                    advanceLevel();
+                }
+            }
+
+            moveAIPaddle();
+
+            paddle1Y += paddle1Speed;
+            if (paddle1Y < 0) paddle1Y = 0;
+            if (paddle1Y > canvas.height - paddleHeight) paddle1Y = canvas.height - paddleHeight;
+
+            if (ballX - ballRadius < paddleWidth && ballY > paddle1Y && ballY < paddle1Y + paddleHeight) {
+                ballSpeedX = -ballSpeedX;
+                adjustTrajectory();
+                paddleHitAudio.play();
+            }
+        }
+
+        function adjustTrajectory() {
+            const minHorizontalSpeed = 3;
+            const maxVerticalSpeed = Math.abs(ballSpeedX) * 0.5;
+
+            ballSpeedY = Math.sign(ballSpeedY) * Math.min(maxVerticalSpeed, Math.abs(ballSpeedY));
+
+            if (Math.abs(ballSpeedX) < minHorizontalSpeed) {
+                ballSpeedX = Math.sign(ballSpeedX) * minHorizontalSpeed;
+            }
+        }
+
+        function moveAIPaddle() {
+            let aiCenter = paddle2Y + paddleHeight / 2;
+            if (aiCenter < ballY - 35) {
+                paddle2Y += 4 + level;
+            } else if (aiCenter > ballY + 35) {
+                paddle2Y -= 4 + level;
+            }
+
+            if (paddle2Y < 0) paddle2Y = 0;
+            if (paddle2Y > canvas.height - paddleHeight) paddle2Y = canvas.height - paddleHeight;
+        }
+
+        function drawEverything() {
+            drawRect(0, 0, canvas.width, canvas.height, 'blue');
+            drawRect(0, paddle1Y, paddleWidth, paddleHeight, 'red');
+            drawRect(canvas.width - paddleWidth, paddle2Y, paddleWidth, paddleHeight, 'green');
+            drawCircle(ballX, ballY, ballRadius, 'white');
+            drawMiddleLine();
+        }
+
+        function gameLoop() {
+            moveEverything();
+            drawEverything();
+        }
+
+        function gameOver(message) {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            clearInterval(levelTimer);
+            initialSpeed = 4;  // Reset the speed to the original value when the player loses
+            messageDiv.innerText = message;
+            messageDiv.style.display = 'block';
+            if (message === 'You Win!') {
+                playAgainBtn.style.display = 'block';
+            } else {
+                startBtn.style.display = 'block';
+                pauseBtn.style.display = 'none'; // Hide pause button when game ends
+            }
+        }
+
+        function startGame() {
+            isGameOver = false;
+            level = 1;
+            updateLevelDisplay();
+            resetBall();
+            messageDiv.style.display = 'none';
+            startBtn.style.display = 'none';
+            playAgainBtn.style.display = 'none';
+            pauseBtn.style.display = 'inline-block';  // Show pause button when game starts
+            resumeBtn.style.display = 'none';  // Hide resume button
+            gameInterval = setInterval(gameLoop, 1000 / 60);
+            startLevelTimer();
+        }
+
+        function startLevelTimer() {
+            clearInterval(levelTimer);
+            levelTimer = setInterval(() => {
+                if (!isGameOver && !isPaused) advanceLevel();
+            }, 30000); 
+        }
+
+        function advanceLevel() {
+            level++;
+            if (level > 5) {
+                gameOver('You Win!');
+            } else {
+                initialSpeed += speedIncrement;
+                updateLevelDisplay();
+                resetBall();
+            }
+        }
+
+        function updateLevelDisplay() {
+            levelDisplay.innerText = `Level: ${level}`;
+        }
+
+        function pauseGame() {
+            clearInterval(gameInterval);
+            isPaused = true;
+            pauseBtn.style.display = 'none';  // Hide pause button
+            resumeBtn.style.display = 'inline-block';  // Show resume button
+        }
+
+        function resumeGame() {
+            isPaused = false;
+            resumeBtn.style.display = 'none';  // Hide resume button
+            pauseBtn.style.display = 'inline-block';  // Show pause button
+            gameInterval = setInterval(gameLoop, 1000 / 60);  // Resume game loop
+        }
+
+        startBtn.addEventListener('click', startGame);
+        playAgainBtn.addEventListener('click', startGame);
+        pauseBtn.addEventListener('click', pauseGame);
+        resumeBtn.addEventListener('click', resumeGame);
+
+        window.addEventListener('keydown', function(evt) {
+            if (evt.key === 'ArrowUp') {
+                paddle1Speed = -paddleSpeed;
+            } else if (evt.key === 'ArrowDown') {
+                paddle1Speed = paddleSpeed;
+            }
+        });
+
+        window.addEventListener('keyup', function(evt) {
+            if (evt.key === 'ArrowUp' || evt.key === 'ArrowDown') {
+                paddle1Speed = 0;
+            }
+        });
+
+        canvas.addEventListener('mousemove', function(evt) {
+            let rect = canvas.getBoundingClientRect();
+            let root = document.documentElement;
+            let mouseY = evt.clientY - rect.top - root.scrollTop;
+            paddle1Y = mouseY - paddleHeight / 2;
+
+            if (paddle1Y < 0) paddle1Y = 0;
+            if (paddle1Y > canvas.height - paddleHeight) paddle1Y = canvas.height - paddleHeight;
+        });
+    </script>
+</body>
+</html>
